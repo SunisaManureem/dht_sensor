@@ -6,6 +6,7 @@
   <title>Weather — iOS style</title>
 
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     :root{
@@ -147,6 +148,46 @@
     body[data-theme="light"] .toolbar option{color:#000}
     body[data-theme="dark"]  .toolbar option{color:#fff;background:#2e3641}
     body[data-theme="dark"]  .toolbar select{color:#fff}
+
+    /* Sensor Data Styles */
+    .chart-btn {
+      padding: 4px 8px;
+      font-size: 0.8rem;
+      border: 1px solid rgba(255,255,255,.18);
+      background: var(--glass-soft);
+      color: var(--text);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .chart-btn.active {
+      background: rgba(255,255,255,.3);
+      border-color: rgba(255,255,255,.4);
+    }
+    
+    .chart-btn:hover {
+      background: rgba(255,255,255,.25);
+    }
+    
+    #statusDot.online {
+      background: #4CAF50;
+      box-shadow: 0 0 6px #4CAF50;
+    }
+    
+    #statusDot.offline {
+      background: #f44336;
+    }
+    
+    #statusDot.loading {
+      background: #ff9800;
+      animation: pulse 1.5s ease-in-out infinite alternate;
+    }
+    
+    @keyframes pulse {
+      from { opacity: 1; }
+      to { opacity: 0.4; }
+    }
   </style>
 </head>
 <body>
@@ -178,6 +219,49 @@
     </div>
 
     <div id="rainHint" class="card alert" style="display:none"></div>
+
+    <!-- ESP32 Sensor Data Section -->
+    <div>
+      <div class="section-title">🌡️ ข้อมูลเซ็นเซอร์ ESP32 (DHT11)</div>
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-weight: 600;">เซ็นเซอร์แบบเรียลไทม์</div>
+          <div id="sensorStatus" style="display: flex; align-items: center; gap: 6px; font-size: 0.9rem;">
+            <span id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #888;"></span>
+            <span id="statusText" style="color: var(--muted);">กำลังโหลด...</span>
+          </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div style="text-align: center; padding: 12px; background: var(--glass-soft); border-radius: 12px;">
+            <div style="font-size: 1.5rem;">🌡️</div>
+            <div style="color: var(--muted); font-size: 0.9rem; margin: 4px 0;">อุณหภูมิ</div>
+            <div id="sensorTemp" style="font-size: 1.8rem; font-weight: 300;">--°C</div>
+            <div id="sensorTempTime" style="color: var(--muted); font-size: 0.8rem; margin-top: 4px;">--</div>
+          </div>
+          <div style="text-align: center; padding: 12px; background: var(--glass-soft); border-radius: 12px;">
+            <div style="font-size: 1.5rem;">💧</div>
+            <div style="color: var(--muted); font-size: 0.9rem; margin: 4px 0;">ความชื้น</div>
+            <div id="sensorHumidity" style="font-size: 1.8rem; font-weight: 300;">--%</div>
+            <div id="sensorHumidityTime" style="color: var(--muted); font-size: 0.8rem; margin-top: 4px;">--</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: 600; font-size: 0.95rem;">📊 กราหข้อมูลย้อนหลัง</span>
+            <div style="display: flex; gap: 4px;">
+              <button class="chart-btn active" data-hours="6" style="padding: 4px 8px; font-size: 0.8rem;">6 ชม.</button>
+              <button class="chart-btn" data-hours="12" style="padding: 4px 8px; font-size: 0.8rem;">12 ชม.</button>
+              <button class="chart-btn" data-hours="24" style="padding: 4px 8px; font-size: 0.8rem;">24 ชม.</button>
+            </div>
+          </div>
+          <div style="position: relative; height: 200px; background: var(--glass-soft); border-radius: 8px; padding: 8px;">
+            <canvas id="sensorChart" style="width: 100%; height: 100%;"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div>
       <div class="section-title">พยากรณ์อากาศรายชั่วโมง</div>
@@ -429,6 +513,281 @@
   }
 
 
+  /* ===== ESP32 Sensor Data Integration ===== */
+  let sensorChart = null;
+  let currentChartHours = 6;
+
+  // API base URL - will work both locally and on Vercel
+  const API_BASE = window.location.origin;
+
+  async function fetchSensorData(hours = 24) {
+    try {
+      const response = await fetch(`${API_BASE}/api/sensors/data?hours=${hours}&limit=1000`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching sensor data:', error);
+      return null;
+    }
+  }
+
+  async function fetchLatestSensorData() {
+    try {
+      const response = await fetch(`${API_BASE}/api/sensors/latest`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching latest sensor data:', error);
+      return null;
+    }
+  }
+
+  function formatRelativeTime(dateString) {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now - date;
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'เมื่อสักครู่';
+    if (diffMinutes < 60) return `${diffMinutes} นาทีก่อน`;
+    
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours} ชั่วโมงก่อน`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} วันก่อน`;
+  }
+
+  function updateSensorStatus(isOnline, lastUpdate) {
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    
+    if (isOnline) {
+      statusDot.className = 'online';
+      statusText.textContent = 'ออนไลน์';
+      statusText.style.color = '#4CAF50';
+    } else {
+      statusDot.className = 'offline';
+      statusText.textContent = lastUpdate ? `ออฟไลน์ • ${formatRelativeTime(lastUpdate)}` : 'ออฟไลน์';
+      statusText.style.color = '#f44336';
+    }
+  }
+
+  function updateSensorDisplay(data) {
+    if (!data || data.length === 0) {
+      document.getElementById('sensorTemp').textContent = '--°C';
+      document.getElementById('sensorHumidity').textContent = '--%';
+      document.getElementById('sensorTempTime').textContent = '--';
+      document.getElementById('sensorHumidityTime').textContent = '--';
+      updateSensorStatus(false);
+      return;
+    }
+
+    const latest = data[0];
+    const temp = latest.sensorData.temperature;
+    const humidity = latest.sensorData.humidity;
+    const timestamp = latest.sensorData.timestamp;
+    
+    document.getElementById('sensorTemp').textContent = `${temp.toFixed(1)}°C`;
+    document.getElementById('sensorHumidity').textContent = `${humidity.toFixed(0)}%`;
+    
+    const timeStr = formatRelativeTime(timestamp);
+    document.getElementById('sensorTempTime').textContent = timeStr;
+    document.getElementById('sensorHumidityTime').textContent = timeStr;
+    
+    // Consider online if last reading is within 5 minutes
+    const isOnline = (new Date() - new Date(timestamp)) < 5 * 60 * 1000;
+    updateSensorStatus(isOnline, timestamp);
+  }
+
+  function createSensorChart(data) {
+    const ctx = document.getElementById('sensorChart');
+    if (!ctx) return;
+
+    // Destroy existing chart
+    if (sensorChart) {
+      sensorChart.destroy();
+    }
+
+    if (!data || data.length === 0) {
+      ctx.getContext('2d').clearRect(0, 0, ctx.width, ctx.height);
+      return;
+    }
+
+    // Sort data by timestamp
+    const sortedData = data.sort((a, b) => new Date(a.sensorData.timestamp) - new Date(b.sensorData.timestamp));
+    
+    const labels = sortedData.map(item => {
+      const date = new Date(item.sensorData.timestamp);
+      return date.toLocaleTimeString('th-TH', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
+    });
+
+    const tempData = sortedData.map(item => item.sensorData.temperature);
+    const humidityData = sortedData.map(item => item.sensorData.humidity);
+
+    sensorChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'อุณหภูมิ (°C)',
+            data: tempData,
+            borderColor: '#ff6b6b',
+            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.1,
+            yAxisID: 'y'
+          },
+          {
+            label: 'ความชื้น (%)',
+            data: humidityData,
+            borderColor: '#4ecdc4',
+            backgroundColor: 'rgba(78, 205, 196, 0.1)',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.1,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: {
+              color: 'var(--text)',
+              font: {
+                size: 11
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: 'var(--muted)',
+              font: {
+                size: 10
+              },
+              maxTicksLimit: 8
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            }
+          },
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            ticks: {
+              color: '#ff6b6b',
+              font: {
+                size: 10
+              }
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
+            },
+            title: {
+              display: true,
+              text: '°C',
+              color: '#ff6b6b'
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            ticks: {
+              color: '#4ecdc4',
+              font: {
+                size: 10
+              }
+            },
+            grid: {
+              drawOnChartArea: false,
+            },
+            title: {
+              display: true,
+              text: '%',
+              color: '#4ecdc4'
+            }
+          }
+        },
+        elements: {
+          point: {
+            radius: 1,
+            hoverRadius: 4
+          }
+        }
+      }
+    });
+  }
+
+  async function loadSensorData(hours = currentChartHours) {
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    
+    // Show loading state
+    statusDot.className = 'loading';
+    statusText.textContent = 'กำลังโหลด...';
+    statusText.style.color = 'var(--muted)';
+
+    try {
+      const [sensorData, latestData] = await Promise.all([
+        fetchSensorData(hours),
+        fetchLatestSensorData()
+      ]);
+
+      if (latestData && latestData.success && latestData.data.length > 0) {
+        updateSensorDisplay(latestData.data);
+      } else {
+        updateSensorDisplay([]);
+      }
+
+      if (sensorData && sensorData.success && sensorData.data.length > 0) {
+        createSensorChart(sensorData.data);
+      } else {
+        createSensorChart([]);
+      }
+    } catch (error) {
+      console.error('Error loading sensor data:', error);
+      updateSensorDisplay([]);
+      createSensorChart([]);
+      updateSensorStatus(false);
+    }
+  }
+
+  // Chart time range buttons
+  document.addEventListener('DOMContentLoaded', () => {
+    const chartButtons = document.querySelectorAll('.chart-btn');
+    chartButtons.forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const hours = parseInt(e.target.dataset.hours);
+        currentChartHours = hours;
+        
+        // Update active button
+        chartButtons.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+        
+        // Reload chart data
+        await loadSensorData(hours);
+      });
+    });
+  });
+
+  // Auto-refresh sensor data every 2 minutes
+  setInterval(() => {
+    loadSensorData(currentChartHours);
+  }, 2 * 60 * 1000);
+
   document.getElementById("citySel").addEventListener("change",loadWeather);
 
   (async ()=>{
@@ -439,6 +798,9 @@
     themeSel.addEventListener("change",e=>applyThemeMode(e.target.value));
     applyThemeMode(savedMode);
     await loadWeather();
+    
+    // Load sensor data after page initialization
+    await loadSensorData(currentChartHours);
   })();
 </script>
 </body>
