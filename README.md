@@ -235,6 +235,8 @@ MIT License - feel free to use this project for personal or commercial purposes.
 - **Charts**: Chart.js
 - **Database**: MongoDB Atlas
 - **Deployment**: Vercel
+
+<!-- Updated: 2025-09-10 - Force deployment sync -->
 =======
 # ผู้จัดทำ
 นางสาวสุนิสา มนูรีม 66030292
