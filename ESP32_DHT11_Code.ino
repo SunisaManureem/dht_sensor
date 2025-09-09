@@ -18,7 +18,7 @@ const long gmtOffset_sec = 7 * 3600;     // GMT+7 (Thailand timezone)
 const int daylightOffset_sec = 0;        // Thailand doesn't use daylight saving time
 
 // DHT11 Temperature and Humidity sensor configuration
-#define DHT_PIN 2          // DHT11 sensor connected to GPIO 2
+#define DHT_PIN 4          // DHT11 sensor connected to GPIO 2
 #define DHT_TYPE DHT11     // DHT11 sensor type
 
 // Initialize DHT sensor

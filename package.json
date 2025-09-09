@@ -1,22 +1,5 @@
 {
-  "name": "dht-weather-app",
+  "name": "dht-project",
   "version": "1.0.0",
-  "description": "Weather app with ESP32 DHT11 sensor integration",
-  "main": "index.html",
-  "scripts": {
-    "dev": "echo 'No dev server needed - static site'",
-    "build": "echo 'No build step needed - static site'"
-  },
-  "dependencies": {
-    "mongoose": "^8.18.0"
-  },
-  "keywords": [
-    "weather",
-    "esp32",
-    "dht11",
-    "mongodb",
-    "vercel"
-  ],
-  "author": "Adil",
-  "license": "MIT"
+  "type": "module"
 }
