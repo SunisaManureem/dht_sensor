@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Weather App with ESP32 DHT11 Sensor Integration
 
 A modern weather application that combines OpenWeatherMap data with real-time ESP32 DHT11 sensor readings, deployed on Vercel with MongoDB Atlas.
@@ -234,3 +235,9 @@ MIT License - feel free to use this project for personal or commercial purposes.
 - **Charts**: Chart.js
 - **Database**: MongoDB Atlas
 - **Deployment**: Vercel
+=======
+# ผู้จัดทำ
+นางสาวสุนิสา มนูรีม 66030292
+
+นายอาดิ๊ล บินสอั๊ด 66030301
+>>>>>>> 01cf3e4ff3a5bbddc821c30c9c78771da88b0381
